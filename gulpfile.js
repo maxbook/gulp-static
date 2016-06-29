@@ -1,73 +1,53 @@
-var gulp = require('gulp'),
-  connect = require('gulp-connect'),
-  less = require('gulp-less'),
-  autoprefixer = require('gulp-autoprefixer'),
-  minify = require('gulp-minify-css'),
-  concat = require('gulp-concat'),
-  fs = require('fs'),
-  mkdirp = require('mkdirp'),
-  uglify = require('gulp-uglify');
-
-function handleError(err) {
-  console.log(err.toString());
-  this.emit('end');
-}
-
-function newWebsite() {
-  mkdirp('www', function() {
-    fs.writeFile("www/index.html", "Hey there!");
-  });
-  mkdirp('www/assets');
-  mkdirp('www/assets/css');
-  mkdirp('www/assets/img');
-  mkdirp('www/assets/js', function() {
-    fs.writeFile("www/assets/js/master.js", "//Hey there!");
-  });
-  mkdirp('www/assets/less', function() {
-    fs.writeFile("www/assets/less/master.less", "Hey there!");
-  });
-}
-
-gulp.task('new', newWebsite);
+var gulp = require('gulp');
+var plumber = require('gulp-plumber');
+var connect = require('gulp-connect');
+var less = require('gulp-less');
+var cssnano = require('gulp-cssnano');
+var postcss = require('gulp-postcss');
+var unprefix = require('postcss-unprefix');
+var autoprefixer = require('autoprefixer');
+var notify = require("gulp-notify");
 
 gulp.task('connect', function() {
-  connect.server({
-    root: 'www',
-    port: 1337,
-    livereload: true
-  });
+    connect.server({
+        root: ['.'],
+        livereload: true,
+        fallback: 'index.html'
+    });
 });
 
-gulp.task('less', function() {
-  return gulp.src('./www/assets/less/**/*.less')
+gulp.task('reload-html', function() {
+    gulp.src('index.html')
+        .pipe(connect.reload())
+        .pipe(notify("Html reloaded : <%= file.relative %> !"));
+});
+
+gulp.task('less', function () {
+  return gulp.src('./assets/less/**/*.less')
+    .pipe(plumber({errorHandler: notify.onError("Error: <%= error.message %>")}))
     .pipe(less())
-    .on('error', handleError)
-    .pipe(autoprefixer('last 4 version', 'safari 5', 'ie 8', 'ie 9', 'opera 12.1', 'ios 6', 'android 4'))
-    .pipe(minify({
-      compatibility: 'ie8'
+    .pipe(less().on('error', function(err) {
+        notify(err.message);
+        this.emit('end');
     }))
-    .pipe(gulp.dest('./www/assets/css'))
+    .pipe(postcss([
+        unprefix,
+        autoprefixer({
+            browsers: ['last 3 version']
+        })
+    ]))
+    .pipe(cssnano())
+    .pipe(gulp.dest('./assets/css'))
+    .pipe(notify("Less compiled : <%= file.relative %> !"))
     .pipe(connect.reload());
 });
 
-gulp.task('html', function() {
-  return gulp.src('./www/**/*.html')
-    .pipe(connect.reload());
+gulp.task('watch-html', function() {
+  gulp.watch('**/*.html', ['reload-html']);
 });
 
-gulp.task('scripts', function() {
-  return gulp.src('./www/assets/js/**/*.js')
-    .pipe(concat('master.js'))
-    .pipe(uglify())
-    .pipe(gulp.dest('./www/assets/js'))
-    .pipe(connect.reload());
+gulp.task('watch-less', function() {
+  gulp.watch('**/*.less', ['less']);
 });
 
-gulp.task('watch', function() {
-  gulp.watch('./www/assets/less/*.less', ['less']);
-  gulp.watch('./www/*.html', ['html']);
-  gulp.watch('./www/assets/js/**/*.js', ['scripts']);
-});
-
-gulp.task('default', ['connect', 'watch']);
-// gulp.task('new', ['mkdirs', 'default']);
+gulp.task('default', ['less','connect', 'watch-html', 'watch-less']);
